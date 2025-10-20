@@ -1,0 +1,100 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      UserRole
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  exams        Exam[]
+  submissions  Submission[]
+
+  @@map("users")
+}
+
+model Exam {
+  id               String    @id @default(cuid())
+  title            String
+  description      String?   @db.Text
+  duration         Int?      // Duration in minutes
+  totalMarks       Int?      // Total marks for the exam
+  questions        Json?     // Store questions as JSON
+  type             ExamType
+  deadline         DateTime?
+  modelAnswer      String?   @db.Text
+  rubric           String?   @db.Text
+  modelAnswerFile  String?   // S3 URL
+  rubricFile       String?   // S3 URL
+  totalSubmissions Int       @default(0)
+  gradedSubmissions Int      @default(0)
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  // Relations
+  teacherId   String
+  teacher     User        @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  submissions Submission[]
+
+  @@index([teacherId])
+  @@index([createdAt])
+  @@map("exams")
+}
+
+model Submission {
+  id               String           @id @default(cuid())
+  originalAnswer   String           @db.Text
+  marks            Int?             // Marks scored, null if not graded
+  feedback         String?          @db.Text
+  matchPercentage  Float?           // AI-computed similarity
+  status           SubmissionStatus @default(PENDING)
+  gradedAt         DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  // Relations
+  studentId String
+  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  examId    String
+  exam      Exam   @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, examId]) // One submission per student per exam
+  @@index([studentId])
+  @@index([examId])
+  @@index([status])
+  @@index([gradedAt])
+  @@map("submissions")
+}
+
+// Enums
+enum UserRole {
+  TEACHER
+  STUDENT
+}
+
+enum ExamType {
+  MCQ
+  TRUE_FALSE
+  SHORT_ANSWER
+  MIXED
+}
+
+enum SubmissionStatus {
+  PENDING
+  GRADED
+}
+
