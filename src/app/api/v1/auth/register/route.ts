@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
     // Validate password strength
     const passwordValidation = validatePassword(validatedData.password);
     if (!passwordValidation.isValid) {
+      console.error('Password validation failed:', passwordValidation.errors);
       return errorResponse('Password validation failed', 400, passwordValidation.errors);
     }
     
@@ -24,6 +25,7 @@ export async function POST(request: NextRequest) {
     });
     
     if (existingUser) {
+      console.warn('Attempt to register with existing email:', validatedData.email);
       return errorResponse('User with this email already exists', 409);
     }
     
@@ -53,11 +55,17 @@ export async function POST(request: NextRequest) {
       email: user.email,
       role: user.role,
     });
-    
+
+    console.log(token);
+
+    console.log("sending email")
+
     // Send welcome email (don't await to not block response)
-    sendWelcomeEmail(user.email, user.name, user.role).catch(err => 
+    sendWelcomeEmail(user.email, user.name, user.role).catch(err =>
       console.error('Failed to send welcome email:', err)
     );
+
+    console.log("email sent!")
     
     return successResponse(
       { user, token },
