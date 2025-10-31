@@ -1,15 +1,12 @@
 // src/services/auth/authService.ts
-export async function registerUser(data: {
-    name: string;
-    email: string;
-    password: string;
-    role: string;
-}) {
+export async function registerUser(data: { name: string; email: string; password: string; role: string }) {
     try {
+        // Ensure role is lowercase for backend compatibility
+        const normalizedRole = data.role;
         const response = await fetch('/api/v1/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data),
+            body: JSON.stringify({ ...data, role: normalizedRole }),
         });
 
         const result = await response.json();
