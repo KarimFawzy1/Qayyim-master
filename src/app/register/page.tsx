@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import {Component, useState} from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Logo } from "@/components/logo";
 import Link from "next/link";
 import { registerUser } from "@/services/authService";
-import { useRouter } from "next/navigation"; // ✅ Correct import for App Router
+import { useRouter } from "next/navigation";
+import PasswordValidityChecker from "@/components/ui/password-checker"; // ✅ Correct import for App Router
 
 export default function RegisterPage() {
     const [name, setName] = useState("");
@@ -44,7 +45,7 @@ export default function RegisterPage() {
             console.log("User registered successfully:", response);
 
             if (response.data?.token) {
-                localStorage.setItem("authToken", response.data.token);
+                localStorage.setItem("token", response.data.token);
             }
 
             // Redirect based on role
@@ -66,7 +67,7 @@ export default function RegisterPage() {
     return (
         <div className="flex min-h-screen flex-col items-center justify-center bg-muted">
             <div className="mb-8">
-                <Logo />
+                <Logo/>
             </div>
             <Card className="w-full max-w-sm">
                 <CardHeader className="text-center">
@@ -122,40 +123,18 @@ export default function RegisterPage() {
                             required
                             disabled={isLoading}
                         />
-                        <div className="mt-2 text-sm">
-                            <ul className="space-y-1">
-                                <li className="flex items-center">
-                                    <span className={`inline-block w-4 text-center ${passwordValidity.minLength ? 'text-green-500' : 'text-destructive'}`}>{passwordValidity.minLength ? '✓' : '✗'}</span>
-                                    <span className={`ml-1 ${passwordValidity.minLength ? 'text-green-500' : 'text-muted-foreground'}`}>At least 8 characters</span>
-                                </li>
-                                <li className="flex items-center">
-                                    <span className={`inline-block w-4 text-center ${passwordValidity.uppercase ? 'text-green-500' : 'text-destructive'}`}>{passwordValidity.uppercase ? '✓' : '✗'}</span>
-                                    <span className={`ml-1 ${passwordValidity.uppercase ? 'text-green-500' : 'text-muted-foreground'}`}>An uppercase letter</span>
-                                </li>
-                                <li className="flex items-center">
-                                    <span className={`inline-block w-4 text-center ${passwordValidity.lowercase ? 'text-green-500' : 'text-destructive'}`}>{passwordValidity.lowercase ? '✓' : '✗'}</span>
-                                    <span className={`ml-1 ${passwordValidity.lowercase ? 'text-green-500' : 'text-muted-foreground'}`}>A lowercase letter</span>
-                                </li>
-                                <li className="flex items-center">
-                                    <span className={`inline-block w-4 text-center ${passwordValidity.number ? 'text-green-500' : 'text-destructive'}`}>{passwordValidity.number ? '✓' : '✗'}</span>
-                                    <span className={`ml-1 ${passwordValidity.number ? 'text-green-500' : 'text-muted-foreground'}`}>A number</span>
-                                </li>
-                                <li className="flex items-center">
-                                    <span className={`inline-block w-4 text-center ${passwordValidity.specialChar ? 'text-green-500' : 'text-destructive'}`}>{passwordValidity.specialChar ? '✓' : '✗'}</span>
-                                    <span className={`ml-1 ${passwordValidity.specialChar ? 'text-green-500' : 'text-muted-foreground'}`}>A special character (@$!%*?&)</span>
-                                </li>
-                            </ul>
-                        </div>
+                        <PasswordValidityChecker passwordValidity={passwordValidity}/>
                     </div>
                     <div className="grid gap-2">
                         <Label htmlFor="role">Role</Label>
                         <Select onValueChange={
-                            (value)=>{
+                            (value) => {
                                 setRole(value);
+                            }
                         }
-                        } disabled={isLoading}>
+                                disabled={isLoading}>
                             <SelectTrigger id="role">
-                                <SelectValue placeholder="Select your role" />
+                                <SelectValue placeholder="Select your role"/>
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="TEACHER">Teacher</SelectItem>
@@ -176,7 +155,8 @@ export default function RegisterPage() {
             </Card>
             <p className="mt-4 text-center text-sm text-muted-foreground">
                 Already have an account?{" "}
-                <Link href="/login" className="font-semibold text-primary underline">
+                <Link href="/login"
+                      className="font-semibold text-primary underline">
                     Login
                 </Link>
             </p>

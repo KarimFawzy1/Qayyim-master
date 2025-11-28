@@ -36,7 +36,7 @@ export default function LoginPage() {
 
             // Store token
             if (response.data?.token) {
-                localStorage.setItem("authToken", response.data.token);
+                localStorage.setItem("token", response.data.token);
             }
 
             // Get role from correct path: response.data.user.role (not response.data.role)

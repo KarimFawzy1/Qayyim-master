@@ -67,7 +67,7 @@ model Exam {
   description     String?   @db.Text
   duration        Int?      @db.UnsignedInt
   totalMarks      Int?      @db.UnsignedInt
-  questions       Json?
+  questions       Json? // {question, model_answer, points, type}
   type            ExamType
   deadline        DateTime?
   modelAnswer     String?   @db.Text
@@ -94,7 +94,7 @@ model Exam {
 
 model Submission {
   id              String           @id @default(cuid())
-  originalAnswers Json
+  originalAnswers Json // {answer, points}
   marks           Int?             @db.UnsignedInt
   feedback        String?          @db.Text
   status          SubmissionStatus @default(PENDING)
