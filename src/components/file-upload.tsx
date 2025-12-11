@@ -1,6 +1,5 @@
 "use client";
-
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useDropzone, FileRejection } from 'react-dropzone';
 import { UploadCloud, FileText, X, File as FileIcon, FileType } from 'lucide-react';
 import { Input } from './ui/input';
@@ -20,11 +19,25 @@ const getFileIcon = (fileName: string) => {
 
 type FileUploadProps = {
   maxFiles?: number;
+  onFilesChange?: (files: File[]) => void;  // NEW: Callback to expose files to parent
+  value?: File[];  // NEW: Controlled value
 };
 
-export function FileUpload({ maxFiles = 2 }: FileUploadProps) {
-  const [files, setFiles] = useState<File[]>([]);
+export function FileUpload({ maxFiles = 2, onFilesChange, value }: FileUploadProps) {
+  const [files, setFiles] = useState<File[]>(value || []);
   const [rejectedFiles, setRejectedFiles] = useState<FileRejection[]>([]);
+
+  // Sync with external value changes
+  useEffect(() => {
+    if (value !== undefined) {
+      setFiles(value);
+    }
+  }, [value]);
+
+  const updateFiles = useCallback((newFiles: File[]) => {
+    setFiles(newFiles);
+    onFilesChange?.(newFiles);
+  }, [onFilesChange]);
 
   const onDrop = useCallback((acceptedFiles: File[], fileRejections: FileRejection[]) => {
     const currentFileNames = new Set(files.map(f => f.name));
@@ -44,9 +57,9 @@ export function FileUpload({ maxFiles = 2 }: FileUploadProps) {
       excessFiles = combinedFiles.slice(maxFiles).map(file => ({ file, errors: [{ code: 'too-many-files', message: `You can only upload a maximum of ${maxFiles} files.`}]}));
     }
     
-    setFiles(newFilesToAdd);
+    updateFiles(newFilesToAdd);
     setRejectedFiles([...fileRejections, ...duplicates, ...excessFiles]);
-  }, [files, maxFiles]);
+  }, [files, maxFiles, updateFiles]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -61,11 +74,12 @@ export function FileUpload({ maxFiles = 2 }: FileUploadProps) {
   });
 
   const removeFile = (fileName: string) => {
-    setFiles(files.filter(file => file.name !== fileName));
+    const newFiles = files.filter(file => file.name !== fileName);
+    updateFiles(newFiles);
   };
 
   const clearAllFiles = () => {
-    setFiles([]);
+    updateFiles([]);
     setRejectedFiles([]);
   }
   

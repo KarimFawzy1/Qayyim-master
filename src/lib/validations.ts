@@ -18,16 +18,14 @@ export const forgotPasswordSchema = z.object({
   email: z.string().email('Invalid email address'),
 });
 
+
 export const createExamSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   description: z.string().optional(),
-  duration: z.number().positive('Duration must be positive').optional(),
-  totalMarks: z.number().positive('Total marks must be positive').optional(),
-  questions: z.any().optional(), // JSON object for questions
   type: z.enum(['MCQ', 'TRUE_FALSE', 'SHORT_ANSWER', 'MIXED']),
-  deadline: z.string().datetime().optional().nullable(),
+  deadline: z.string().optional().nullable(), // REMOVE .datetime()
   modelAnswer: z.string().optional(),
-  rubric: z.string().optional(),
+  rubric: z.string().optional().nullable(), // ADD .nullable()
 });
 
 export const updateExamSchema = createExamSchema.partial();

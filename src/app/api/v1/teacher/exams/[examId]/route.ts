@@ -27,8 +27,8 @@ export async function GET(
       return errorResponse('Exam not found', 404);
     }
     
-    // Verify ownership
-    if (exam.teacherId !== authUser.userId) {
+    // ⚠️ FIX: Verify ownership using instructorId
+    if (exam.instructorId !== authUser.userId) {
       return errorResponse('Access denied. You do not own this exam.', 403);
     }
     
@@ -62,7 +62,8 @@ export async function PUT(
       return errorResponse('Exam not found', 404);
     }
     
-    if (existingExam.teacherId !== authUser.userId) {
+    // ⚠️ FIX: Verify ownership using instructorId
+    if (existingExam.instructorId !== authUser.userId) {
       return errorResponse('Access denied. You do not own this exam.', 403);
     }
     
@@ -72,9 +73,9 @@ export async function PUT(
       data: {
         ...(validatedData.title && { title: validatedData.title }),
         ...(validatedData.description !== undefined && { description: validatedData.description }),
-        ...(validatedData.duration !== undefined && { duration: validatedData.duration }),
-        ...(validatedData.totalMarks !== undefined && { totalMarks: validatedData.totalMarks }),
-        ...(validatedData.questions !== undefined && { questions: validatedData.questions }),
+        // ...(validatedData.duration !== undefined && { duration: validatedData.duration }),
+        // ...(validatedData.totalMarks !== undefined && { totalMarks: validatedData.totalMarks }),
+        // ...(validatedData.questions !== undefined && { questions: validatedData.questions }),
         ...(validatedData.type && { type: validatedData.type }),
         ...(validatedData.deadline !== undefined && { 
           deadline: validatedData.deadline ? new Date(validatedData.deadline) : null 
@@ -107,7 +108,8 @@ export async function DELETE(
       return errorResponse('Exam not found', 404);
     }
     
-    if (exam.teacherId !== authUser.userId) {
+    // ⚠️ FIX: Verify ownership using instructorId
+    if (exam.instructorId !== authUser.userId) {
       return errorResponse('Access denied. You do not own this exam.', 403);
     }
     
@@ -121,4 +123,3 @@ export async function DELETE(
     return handleApiError(error);
   }
 }
-
