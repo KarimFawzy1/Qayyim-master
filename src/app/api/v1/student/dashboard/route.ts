@@ -6,11 +6,21 @@ import { successResponse, handleApiError } from '@/lib/api-response';
 export async function GET(request: NextRequest) {
   try {
     const authUser = requireRole(request, 'STUDENT');
+
+    const student = await prisma.student.findUnique({
+      where:{
+        userId: authUser.userId
+      },
+    });
+
+    if (!student) {
+      throw new Error(`No student user with id ${authUser.userId}`);
+    }
     
     // Get recently graded submissions
     const recentlyGraded = await prisma.submission.findMany({
       where: {
-        studentId: authUser.userId,
+        studentId: student.id,
         status: 'GRADED',
       },
       take: 5,
@@ -29,9 +39,9 @@ export async function GET(request: NextRequest) {
     // Get all graded submissions for score trend
     const allGradedSubmissions = await prisma.submission.findMany({
       where: {
-        studentId: authUser.userId,
+        studentId: student.id,
         status: 'GRADED',
-        score: { not: null },
+        marks: { not: null },
       },
       orderBy: { gradedAt: 'asc' },
       include: {
@@ -45,7 +55,7 @@ export async function GET(request: NextRequest) {
     
     // Calculate statistics
     const totalExamsTaken = await prisma.submission.count({
-      where: { studentId: authUser.userId },
+      where: { studentId: student.id },
     });
     
     const averageScore = allGradedSubmissions.length > 0

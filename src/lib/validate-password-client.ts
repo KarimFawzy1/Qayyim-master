@@ -19,3 +19,4 @@ export function validatePasswordClient(password: string): PasswordValidation {
 export function isPasswordValid(validation: PasswordValidation): boolean {
     return Object.values(validation).every(v => v === true);
 }
+

@@ -57,7 +57,7 @@ model Course {
   students    Student[]    @relation("CourseStudents")
   exams       Exam[]       @relation("CourseExams")
 
-  @@unique([courseCode, sectionType, academicYear, semester, sectionNumber])
+  @@unique([sectionType, academicYear, semester, sectionNumber])
   @@map("courses")
 }
 
