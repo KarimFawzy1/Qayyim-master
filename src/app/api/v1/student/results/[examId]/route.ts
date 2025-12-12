@@ -9,12 +9,22 @@ export async function GET(
 ) {
   try {
     const authUser = requireRole(request, 'STUDENT');
+
+    const student = await prisma.student.findUnique({
+      where:{
+        userId: authUser.userId
+      },
+    });
+
+    if (!student) {
+      throw new Error(`No student user with id ${authUser.userId}`);
+    }
     
     // Get submission for this exam
     const submission = await prisma.submission.findUnique({
       where: {
         studentId_examId: {
-          studentId: authUser.userId,
+          studentId: student.id,
           examId: params.examId,
         },
       },
@@ -24,6 +34,9 @@ export async function GET(
             id: true,
             title: true,
             course: true,
+            description: true,
+            duration: true,
+            totalMarks: true,
             type: true,
             modelAnswer: true,
             rubric: true,
@@ -39,9 +52,8 @@ export async function GET(
     return successResponse({
       submission: {
         id: submission.id,
-        originalAnswer: submission.originalAnswer,
+        originalAnswers: submission.originalAnswers,
         marks: submission.marks,
-        matchPercentage: submission.matchPercentage,
         feedback: submission.feedback,
         status: submission.status,
         submittedAt: submission.createdAt,

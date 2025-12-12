@@ -6,11 +6,21 @@ import { successResponse, handleApiError } from '@/lib/api-response';
 export async function GET(request: NextRequest) {
   try {
     const authUser = requireRole(request, 'STUDENT');
+
+    const student = await prisma.student.findUnique({
+      where:{
+        userId: authUser.userId
+      },
+    });
+
+    if (!student) {
+      throw new Error(`No student user with id ${authUser.userId}`);
+    }
     
     // Get all submissions for the student
     const submissions = await prisma.submission.findMany({
       where: {
-        studentId: authUser.userId,
+        studentId: student.id,
       },
       include: {
         exam: {

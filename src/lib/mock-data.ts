@@ -68,7 +68,7 @@ export const MOCK_EXAMS: Exam[] = [
 
 export const MOCK_SUBMISSIONS: StudentSubmission[] = [
   {
-    id: 'sub-1',
+    id: 'clexam002',
     studentName: 'Alice Johnson',
     studentId: 'S001',
     examId: 'exam-1',
