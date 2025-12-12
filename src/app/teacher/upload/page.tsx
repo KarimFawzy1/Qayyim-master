@@ -10,6 +10,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { FileUpload } from "@/components/file-upload";
 import { FILE_UPLOAD, MESSAGES } from "@/lib/constants";
 import { useToast } from "@/hooks/use-toast";
+import { FileRejection } from "react-dropzone";
 
 
 interface Exam {
@@ -28,6 +29,7 @@ export default function UploadSubmissionsPage() {
   const [exams, setExams] = useState<Exam[]>([]);
   const [selectedExamId, setSelectedExamId] = useState("");
   const [files, setFiles] = useState<File[]>([]);
+  const [rejectedFiles, setRejectedFiles] = useState<FileRejection[]>([]);
 
   useEffect(() => {
     const fetchExams = async () => {
@@ -83,46 +85,72 @@ export default function UploadSubmissionsPage() {
     });
     const data = await res.json();
     if (!res.ok) {
-      // Handle backend validation errors
-      if (data.data?.errors && Array.isArray(data.data.errors)) {
-        const errorMessages = data.data.errors.map((e: any) => `${e.filename}: ${e.error}`).join('\n');
-        throw new Error(`Upload errors:\n${errorMessages}`);
-      }
+      // Handle backend validation/upload errors
       throw new Error(data.error || data.message || "Upload failed");
+    }
+    
+    // Handle backend validation errors
+    const backendErrors = data.data?.errors || [];
+    if (backendErrors.length > 0) {
+      // Create FileRejection objects from backend errors
+      const newRejectedFiles: FileRejection[] = [];
+      const validFiles: File[] = [];
+      const erroredFileNames = new Set(backendErrors.map((e: any) => e.filename));
+      
+      // Separate valid and invalid files
+      files.forEach(file => {
+        if (erroredFileNames.has(file.name)) {
+          const error = backendErrors.find((e: any) => e.filename === file.name);
+          newRejectedFiles.push({
+            file,
+            errors: [{ 
+              code: 'backend-validation', 
+              message: error?.error || 'Validation failed' 
+            }]
+          });
+        } else {
+          validFiles.push(file);
+        }
+      });
+      
+      // Update files and rejected files
+      setFiles(validFiles);
+      setRejectedFiles(prev => [...prev, ...newRejectedFiles]);
+      
+      // Show error message - format: "Student ID not found: {studentId} ({filename})"
+      const errorMessages = backendErrors.map((e: any) => {
+        // Extract student ID from error message (format: "Student not found: {studentId}")
+        // or fallback to filename without extension
+        const errorMsg = e.error || '';
+        let studentId = e.filename.replace(/\.pdf$/i, '');
+        if (errorMsg.includes(':')) {
+          const parts = errorMsg.split(':');
+          if (parts.length > 1) {
+            studentId = parts.slice(1).join(':').trim();
+          }
+        }
+        return `Student ID not found: ${studentId} (${e.filename})`;
+      }).join('\n');
+      
+      setError(`Validation failed. Please fix all errors before uploading:\n${errorMessages}`);
+      return;
     }
     
     // Get exam title for success message
     const selectedExam = exams.find(exam => exam.id === selectedExamId);
     const examTitle = selectedExam?.title || "the exam";
     const uploadedCount = data.data?.uploaded || 0;
-    const failedCount = data.data?.failed || 0;
 
-    // Show success toast (even if some files failed)
-    if (uploadedCount > 0) {
-      if (failedCount > 0) {
-        // Partial success
-        toast({
-          title: "Partial Upload Success",
-          description: `Successfully uploaded ${uploadedCount} student ${uploadedCount === 1 ? 'submission' : 'submissions'} for ${examTitle}. ${failedCount} file${failedCount === 1 ? '' : 's'} failed.`,
-        });
-      } else {
-        // Full success
-        toast({
-          title: "Upload Successful!",
-          description: `Successfully uploaded ${uploadedCount} student ${uploadedCount === 1 ? 'submission' : 'submissions'} for ${examTitle}.`,
-        });
-      }
-    } else {
-      // All files failed
-      if (data.data?.errors && Array.isArray(data.data.errors)) {
-        const errorMessages = data.data.errors.map((e: any) => `${e.filename}: ${e.error}`).join('\n');
-        throw new Error(`All files failed to upload:\n${errorMessages}`);
-      }
-      throw new Error("All files failed to upload");
-    }
+    // Show success toast
+    toast({
+      title: "Upload Successful!",
+      description: `Successfully uploaded ${uploadedCount} student ${uploadedCount === 1 ? 'submission' : 'submissions'} for ${examTitle}.`,
+    });
 
     // Redirect after a short delay so user can see the success message
-         window.location.href = "/teacher/exams";
+    setTimeout(() => {  window.location.href = "/teacher/exams";
+    }, 2000);
+ 
   } catch (err) {
     setError(err instanceof Error ? err.message : "Error occurred");
   } finally {
@@ -135,7 +163,7 @@ export default function UploadSubmissionsPage() {
       <PageHeader title="Upload Student Submissions" description="Select an exam and upload student answer sheets for grading." />
 
       <form onSubmit={handleSubmit} className="grid gap-6">
-        {error && <div className="rounded-md bg-destructive/10 p-4 text-sm text-destructive">{error}</div>}
+        {error && <div className="rounded-md bg-destructive/10 p-4 text-sm text-destructive whitespace-pre-wrap">{error}</div>}
 
         <Card>
           <CardHeader>
@@ -164,7 +192,9 @@ export default function UploadSubmissionsPage() {
                 maxFiles={FILE_UPLOAD.MAX_STUDENT_SUBMISSIONS} 
                 maxSize={FILE_UPLOAD.MAX_FILE_SIZE}
                 value={files} 
-                onFilesChange={setFiles} 
+                onFilesChange={setFiles}
+                rejectedFiles={rejectedFiles}
+                onRejectedFilesChange={setRejectedFiles}
               />
               <p className="text-xs text-muted-foreground">
                 Name files as: <code className="rounded bg-muted px-1 py-0.5">{"{"}student_user_id{"}"}.pdf</code>
