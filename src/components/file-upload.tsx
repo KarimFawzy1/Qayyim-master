@@ -22,11 +22,23 @@ type FileUploadProps = {
   maxSize?: number; // Maximum file size in bytes
   onFilesChange?: (files: File[]) => void;  // NEW: Callback to expose files to parent
   value?: File[];  // NEW: Controlled value
+  rejectedFiles?: FileRejection[];  // NEW: External rejected files (e.g., from backend validation)
+  onRejectedFilesChange?: (rejectedFiles: FileRejection[]) => void;  // NEW: Callback for rejected files
 };
 
-export function FileUpload({ maxFiles = 2, maxSize, onFilesChange, value }: FileUploadProps) {
+export function FileUpload({ maxFiles = 2, maxSize, onFilesChange, value, rejectedFiles: externalRejectedFiles, onRejectedFilesChange }: FileUploadProps) {
   const [files, setFiles] = useState<File[]>(value || []);
-  const [rejectedFiles, setRejectedFiles] = useState<FileRejection[]>([]);
+  const [internalRejectedFiles, setInternalRejectedFiles] = useState<FileRejection[]>([]);
+  
+  // Use external rejected files if provided, otherwise use internal state
+  const rejectedFiles = externalRejectedFiles !== undefined ? externalRejectedFiles : internalRejectedFiles;
+  const setRejectedFiles = (newRejectedFiles: FileRejection[]) => {
+    if (externalRejectedFiles !== undefined) {
+      onRejectedFilesChange?.(newRejectedFiles);
+    } else {
+      setInternalRejectedFiles(newRejectedFiles);
+    }
+  };
 
   // Sync with external value changes
   useEffect(() => {
@@ -59,8 +71,9 @@ export function FileUpload({ maxFiles = 2, maxSize, onFilesChange, value }: File
     }
     
     updateFiles(newFilesToAdd);
-    setRejectedFiles([...fileRejections, ...duplicates, ...excessFiles]);
-  }, [files, maxFiles, updateFiles]);
+    const currentRejected = externalRejectedFiles !== undefined ? externalRejectedFiles : internalRejectedFiles;
+    setRejectedFiles([...currentRejected, ...fileRejections, ...duplicates, ...excessFiles]);
+  }, [files, maxFiles, updateFiles, externalRejectedFiles, internalRejectedFiles]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -69,7 +82,8 @@ export function FileUpload({ maxFiles = 2, maxSize, onFilesChange, value }: File
     },
     maxSize: maxSize,
     onDropRejected: (fileRejections) => {
-      setRejectedFiles(prev => [...prev, ...fileRejections]);
+      const currentRejected = externalRejectedFiles !== undefined ? externalRejectedFiles : internalRejectedFiles;
+      setRejectedFiles([...currentRejected, ...fileRejections]);
     },
   });
 
@@ -84,7 +98,8 @@ export function FileUpload({ maxFiles = 2, maxSize, onFilesChange, value }: File
   }
   
   const removeRejectedFile = (fileName: string) => {
-    setRejectedFiles(rejectedFiles.filter(({ file }) => file.name !== fileName));
+    const newRejected = rejectedFiles.filter(({ file }) => file.name !== fileName);
+    setRejectedFiles(newRejected);
   };
 
   return (
