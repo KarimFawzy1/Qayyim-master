@@ -43,41 +43,69 @@ export async function POST(request: NextRequest) {
       throw new Error('Exam not found or access denied');
     }
 
+    // VALIDATION PHASE: Validate all files BEFORE uploading any
+    const validationErrors: any[] = [];
+
+    for (const file of files) {
+      // Validate file type
+      if (file.type !== FILE_UPLOAD.ALLOWED_TYPES.PDF) {
+        validationErrors.push({ filename: file.name, error: MESSAGES.UPLOAD.INVALID_TYPE });
+        continue;
+      }
+      
+      // Validate file size
+      if (file.size > FILE_UPLOAD.MAX_FILE_SIZE) {
+        const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+        validationErrors.push({ 
+          filename: file.name, 
+          error: `${MESSAGES.UPLOAD.FILE_TOO_LARGE} (File size: ${sizeMB}MB)` 
+        });
+        continue;
+      }
+
+      // Extract student ID from filename
+      const studentUserId = autoExtract
+        ? extractStudentUserId(file.name)
+        : file.name.replace(/\.pdf$/i, '');
+
+      if (!studentUserId) {
+        validationErrors.push({ filename: file.name, error: MESSAGES.STUDENT.ID_EXTRACT_FAILED });
+        continue;
+      }
+
+      // Check if student exists
+      const student = await prisma.student.findFirst({
+        where: { userId: studentUserId },
+      });
+
+      if (!student) {
+        validationErrors.push({ filename: file.name, error: `Student ID not found: ${studentUserId} (${file.name})` });
+        continue;
+      }
+    }
+
+    // If ANY validation errors, reject the entire submission
+    if (validationErrors.length > 0) {
+      const errorMessages = validationErrors.map((e: any) => e.error).join('\n');
+      return handleApiError(new Error(`Validation failed. Please fix all errors before uploading:\n${errorMessages}`));
+    }
+
+    // UPLOAD PHASE: All validations passed, now upload all files
     const results: any[] = [];
     const errors: any[] = [];
 
     for (const file of files) {
       try {
-        // Validate file type
-        if (file.type !== FILE_UPLOAD.ALLOWED_TYPES.PDF) {
-          errors.push({ filename: file.name, error: MESSAGES.UPLOAD.INVALID_TYPE });
-          continue;
-        }
-        
-        // Validate file size
-        if (file.size > FILE_UPLOAD.MAX_FILE_SIZE) {
-          const sizeMB = (file.size / 1024 / 1024).toFixed(2);
-          errors.push({ 
-            filename: file.name, 
-            error: `${MESSAGES.UPLOAD.FILE_TOO_LARGE} (File size: ${sizeMB}MB)` 
-          });
-          continue;
-        }
-
         const studentUserId = autoExtract
           ? extractStudentUserId(file.name)
           : file.name.replace(/\.pdf$/i, '');
-
-        if (!studentUserId) {
-          errors.push({ filename: file.name, error: MESSAGES.STUDENT.ID_EXTRACT_FAILED });
-          continue;
-        }
 
         const student = await prisma.student.findFirst({
           where: { userId: studentUserId },
         });
 
         if (!student) {
+          // This should not happen since we validated above, but keeping for safety
           errors.push({ filename: file.name, error: `${MESSAGES.STUDENT.NOT_FOUND}: ${studentUserId}` });
           continue;
         }

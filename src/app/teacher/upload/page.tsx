@@ -83,11 +83,7 @@ export default function UploadSubmissionsPage() {
     });
     const data = await res.json();
     if (!res.ok) {
-      // Handle backend validation errors
-      if (data.data?.errors && Array.isArray(data.data.errors)) {
-        const errorMessages = data.data.errors.map((e: any) => `${e.filename}: ${e.error}`).join('\n');
-        throw new Error(`Upload errors:\n${errorMessages}`);
-      }
+      // Handle backend validation/upload errors
       throw new Error(data.error || data.message || "Upload failed");
     }
     
@@ -95,34 +91,17 @@ export default function UploadSubmissionsPage() {
     const selectedExam = exams.find(exam => exam.id === selectedExamId);
     const examTitle = selectedExam?.title || "the exam";
     const uploadedCount = data.data?.uploaded || 0;
-    const failedCount = data.data?.failed || 0;
 
-    // Show success toast (even if some files failed)
-    if (uploadedCount > 0) {
-      if (failedCount > 0) {
-        // Partial success
-        toast({
-          title: "Partial Upload Success",
-          description: `Successfully uploaded ${uploadedCount} student ${uploadedCount === 1 ? 'submission' : 'submissions'} for ${examTitle}. ${failedCount} file${failedCount === 1 ? '' : 's'} failed.`,
-        });
-      } else {
-        // Full success
-        toast({
-          title: "Upload Successful!",
-          description: `Successfully uploaded ${uploadedCount} student ${uploadedCount === 1 ? 'submission' : 'submissions'} for ${examTitle}.`,
-        });
-      }
-    } else {
-      // All files failed
-      if (data.data?.errors && Array.isArray(data.data.errors)) {
-        const errorMessages = data.data.errors.map((e: any) => `${e.filename}: ${e.error}`).join('\n');
-        throw new Error(`All files failed to upload:\n${errorMessages}`);
-      }
-      throw new Error("All files failed to upload");
-    }
+    // Show success toast
+    toast({
+      title: "Upload Successful!",
+      description: `Successfully uploaded ${uploadedCount} student ${uploadedCount === 1 ? 'submission' : 'submissions'} for ${examTitle}.`,
+    });
 
     // Redirect after a short delay so user can see the success message
-         window.location.href = "/teacher/exams";
+    setTimeout(() => {  window.location.href = "/teacher/exams";
+    }, 2000);
+ 
   } catch (err) {
     setError(err instanceof Error ? err.message : "Error occurred");
   } finally {
