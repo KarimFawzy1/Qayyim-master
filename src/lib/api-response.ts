@@ -7,6 +7,9 @@ export interface ApiResponse<T = any> {
 }
 
 export function successResponse<T>(data: T, message?: string, statusCode = 200): Response {
+  if (statusCode === 204) {
+    return new Response(null, { status: 204 });
+  }
   return Response.json({
     success: true,
     data,
@@ -46,7 +49,11 @@ export function handleApiError(error: any): Response {
   if (error.name === 'ZodError') {
     return errorResponse('Validation error', 400, error.errors);
   }
-  
+
+  if (error instanceof Error && error.message) {
+    return errorResponse(error.message, 400);
+  }
+
   return errorResponse('Internal server error', 500);
 }
 

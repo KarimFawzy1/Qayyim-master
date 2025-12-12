@@ -27,18 +27,30 @@ export async function POST(request: NextRequest) {
       return errorResponse('Invalid email or password', 401);
     }
     
+    // Determine role by checking Instructor or Student record
+    let role: "TEACHER" | "STUDENT"= "STUDENT";
+    const instructor = await prisma.instructor.findUnique({ where: { userId: user.id } });
+    if (instructor) {
+      role = "TEACHER";
+    } else {
+      const student = await prisma.student.findUnique({ where: { userId: user.id } });
+      if (student) {
+        role = "STUDENT";
+      }
+    }
+
     // Generate JWT token
     const token = generateToken({
       userId: user.id,
       email: user.email,
-      role: user.role,
+      role,
     });
     
     // Return user data (exclude password)
     const { password: _, ...userWithoutPassword } = user;
     
     return successResponse(
-      { user: userWithoutPassword, token },
+      { user: { ...userWithoutPassword, role }, token },
       'Login successful'
     );
   } catch (error) {
