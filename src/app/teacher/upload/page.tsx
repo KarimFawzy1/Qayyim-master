@@ -117,18 +117,13 @@ export default function UploadSubmissionsPage() {
       setFiles(validFiles);
       setRejectedFiles(prev => [...prev, ...newRejectedFiles]);
       
-      // Show error message - format: "Student ID not found: {studentId} ({filename})"
+      // Show error message
       const errorMessages = backendErrors.map((e: any) => {
-        // Extract student ID from error message (format: "Student not found: {studentId}")
-        // or fallback to filename without extension
+        // Extract student ID from error message or filename
         const errorMsg = e.error || '';
-        let studentId = e.filename.replace(/\.pdf$/i, '');
-        if (errorMsg.includes(':')) {
-          const parts = errorMsg.split(':');
-          if (parts.length > 1) {
-            studentId = parts.slice(1).join(':').trim();
-          }
-        }
+        const studentId = errorMsg.includes(':') 
+          ? errorMsg.split(':')[1].trim() 
+          : e.filename.replace(/\.pdf$/i, '');
         return `Student ID not found: ${studentId} (${e.filename})`;
       }).join('\n');
       
