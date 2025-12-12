@@ -19,11 +19,12 @@ const getFileIcon = (fileName: string) => {
 
 type FileUploadProps = {
   maxFiles?: number;
+  maxSize?: number; // Maximum file size in bytes
   onFilesChange?: (files: File[]) => void;  // NEW: Callback to expose files to parent
   value?: File[];  // NEW: Controlled value
 };
 
-export function FileUpload({ maxFiles = 2, onFilesChange, value }: FileUploadProps) {
+export function FileUpload({ maxFiles = 2, maxSize, onFilesChange, value }: FileUploadProps) {
   const [files, setFiles] = useState<File[]>(value || []);
   const [rejectedFiles, setRejectedFiles] = useState<FileRejection[]>([]);
 
@@ -65,9 +66,8 @@ export function FileUpload({ maxFiles = 2, onFilesChange, value }: FileUploadPro
     onDrop,
     accept: {
       'application/pdf': ['.pdf'],
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-      'text/plain': ['.txt'],
     },
+    maxSize: maxSize,
     onDropRejected: (fileRejections) => {
       setRejectedFiles(prev => [...prev, ...fileRejections]);
     },
@@ -102,7 +102,9 @@ export function FileUpload({ maxFiles = 2, onFilesChange, value }: FileUploadPro
           <p className="mt-2 text-sm text-muted-foreground">
             {isDragActive ? "Drop the files here ..." : "Drag & drop files here, or click to browse."}
           </p>
-          <p className="text-xs text-muted-foreground">PDF, DOCX, or TXT (Max {maxFiles} files)</p>
+          <p className="text-xs text-muted-foreground">
+            PDF only (Max {maxFiles} files{maxSize ? `, ${(maxSize / 1024 / 1024).toFixed(0)}MB per file` : ''})
+          </p>
         </div>
       </div>
 

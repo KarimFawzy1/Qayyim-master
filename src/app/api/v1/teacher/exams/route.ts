@@ -4,6 +4,7 @@ import { requireRole } from '@/lib/middleware';
 import { createExamSchema } from '@/lib/validations';
 import { successResponse, handleApiError } from '@/lib/api-response';
 import { uploadModelAnswer } from '@/lib/s3';
+import { FILE_UPLOAD, MESSAGES } from '@/lib/constants';
 
 // GET - List all exams for the instructor (formerly teacher)
 export async function GET(request: NextRequest) {
@@ -80,10 +81,16 @@ export async function POST(request: NextRequest) {
     
     // Upload to S3 if file exists
     if (modelAnswerFile) {
-      if (modelAnswerFile.type !== 'application/pdf') {
+      if (modelAnswerFile.type !== FILE_UPLOAD.ALLOWED_TYPES.PDF) {
         // Rollback: Delete the exam record if file is not a PDF
         await prisma.exam.delete({ where: { id: exam.id } });
-        throw new Error('Model answer must be a PDF file');
+        throw new Error(MESSAGES.UPLOAD.INVALID_TYPE);
+      }
+      
+      // Validate file size
+      if (modelAnswerFile.size > FILE_UPLOAD.MAX_FILE_SIZE) {
+        await prisma.exam.delete({ where: { id: exam.id } });
+        throw new Error(MESSAGES.UPLOAD.FILE_TOO_LARGE);
       }
       
       const bytes = await modelAnswerFile.arrayBuffer();

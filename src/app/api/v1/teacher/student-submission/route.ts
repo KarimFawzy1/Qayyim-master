@@ -5,7 +5,13 @@ import { prisma } from '@/lib/prisma';
 import { requireRole } from '@/lib/middleware';
 import { successResponse, handleApiError } from '@/lib/api-response';
 import { uploadStudentAnswer } from '@/lib/s3';
+import { FILE_UPLOAD, MESSAGES } from '@/lib/constants';
 
+/**
+ * Extracts the user ID from the filename.
+ * Files should be named as: {user_id}.pdf (e.g., cmhfemzzt00057kicoeo82gdz.pdf)
+ * This is the User.id (not Student.id) since we search by userId in the Student table.
+ */
 function extractStudentUserId(filename: string): string | null {
   const nameWithoutExt = filename.replace(/\.pdf$/i, '');
   return nameWithoutExt || null;
@@ -42,8 +48,19 @@ export async function POST(request: NextRequest) {
 
     for (const file of files) {
       try {
-        if (file.type !== 'application/pdf') {
-          errors.push({ filename: file.name, error: 'Only PDF files allowed' });
+        // Validate file type
+        if (file.type !== FILE_UPLOAD.ALLOWED_TYPES.PDF) {
+          errors.push({ filename: file.name, error: MESSAGES.UPLOAD.INVALID_TYPE });
+          continue;
+        }
+        
+        // Validate file size
+        if (file.size > FILE_UPLOAD.MAX_FILE_SIZE) {
+          const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+          errors.push({ 
+            filename: file.name, 
+            error: `${MESSAGES.UPLOAD.FILE_TOO_LARGE} (File size: ${sizeMB}MB)` 
+          });
           continue;
         }
 
@@ -52,7 +69,7 @@ export async function POST(request: NextRequest) {
           : file.name.replace(/\.pdf$/i, '');
 
         if (!studentUserId) {
-          errors.push({ filename: file.name, error: 'Could not extract student ID' });
+          errors.push({ filename: file.name, error: MESSAGES.STUDENT.ID_EXTRACT_FAILED });
           continue;
         }
 
@@ -61,7 +78,7 @@ export async function POST(request: NextRequest) {
         });
 
         if (!student) {
-          errors.push({ filename: file.name, error: `Student ${studentUserId} not found` });
+          errors.push({ filename: file.name, error: `${MESSAGES.STUDENT.NOT_FOUND}: ${studentUserId}` });
           continue;
         }
 

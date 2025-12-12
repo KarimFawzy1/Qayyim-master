@@ -13,9 +13,11 @@ import Link from "next/link";
 import { FileUpload } from "@/components/file-upload";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function CreateExamPage() {
   const router = useRouter();
+  const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -86,9 +88,17 @@ export default function CreateExamPage() {
         throw new Error(data.error || "Failed to create exam");
       }
 
-      // Success! Redirect to exams page
-      router.push("/teacher/exams");
-      router.refresh();
+      // Show success toast
+      toast({
+        title: "Exam Created Successfully!",
+        description: `Exam "${title}" has been created successfully.`,
+      });
+
+      // Redirect after a short delay so user can see the success message
+      setTimeout(() => {
+        router.push("/teacher/exams");
+        router.refresh();
+      }, 1500);
       
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");

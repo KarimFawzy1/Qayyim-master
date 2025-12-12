@@ -6,12 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/page-header";
 import { FileCheck2, Loader2 } from "lucide-react";
-import { Checkbox } from "@/components/ui/checkbox";
-import { useRouter } from "next/navigation";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { FileUpload } from "@/components/file-upload";
+import { FILE_UPLOAD, MESSAGES } from "@/lib/constants";
+import { useToast } from "@/hooks/use-toast";
 
-// Remove all these dynamic imports ↑
 
 interface Exam {
   id: string;
@@ -22,13 +21,12 @@ interface Exam {
 }
 
 export default function UploadSubmissionsPage() {
-  const router = useRouter();
+  const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [exams, setExams] = useState<Exam[]>([]);
   const [selectedExamId, setSelectedExamId] = useState("");
-  const [autoExtract, setAutoExtract] = useState(true);
   const [files, setFiles] = useState<File[]>([]);
 
   useEffect(() => {
@@ -55,10 +53,24 @@ export default function UploadSubmissionsPage() {
   try {
     if (!selectedExamId) throw new Error("Please select an exam");
     if (!files.length) throw new Error("Please upload at least one PDF");
+    
+    // Validate all files are PDFs
+    const nonPdfFiles = files.filter(file => file.type !== FILE_UPLOAD.ALLOWED_TYPES.PDF);
+    if (nonPdfFiles.length > 0) {
+      const fileNames = nonPdfFiles.map(f => f.name).join(', ');
+      throw new Error(`${MESSAGES.UPLOAD.INVALID_TYPE}. Please remove: ${fileNames}`);
+    }
+    
+    // Validate file sizes
+    const oversizedFiles = files.filter(file => file.size > FILE_UPLOAD.MAX_FILE_SIZE);
+    if (oversizedFiles.length > 0) {
+      const fileNames = oversizedFiles.map(f => `${f.name} (${(f.size / 1024 / 1024).toFixed(2)}MB)`).join(', ');
+      throw new Error(`${MESSAGES.UPLOAD.FILE_TOO_LARGE}. Please remove: ${fileNames}`);
+    }
 
     const formData = new FormData();
     formData.append("examId", selectedExamId);
-    formData.append("autoExtract", autoExtract.toString());
+    formData.append("autoExtract", "true"); // Always auto-extract from filename
     files.forEach((f) => formData.append("files", f));
 
     const token = localStorage.getItem("token");
@@ -70,12 +82,50 @@ export default function UploadSubmissionsPage() {
       body: formData,
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Upload failed");
+    if (!res.ok) {
+      // Handle backend validation errors
+      if (data.data?.errors && Array.isArray(data.data.errors)) {
+        const errorMessages = data.data.errors.map((e: any) => `${e.filename}: ${e.error}`).join('\n');
+        throw new Error(`Upload errors:\n${errorMessages}`);
+      }
+      throw new Error(data.error || data.message || "Upload failed");
+    }
+    
+    // Get exam title for success message
+    const selectedExam = exams.find(exam => exam.id === selectedExamId);
+    const examTitle = selectedExam?.title || "the exam";
+    const uploadedCount = data.data?.uploaded || 0;
+    const failedCount = data.data?.failed || 0;
 
-    // Hard redirect - bypasses React reconciliation
-    router.push("/teacher/exams");
-    router.refresh();  } catch (err) {
+    // Show success toast (even if some files failed)
+    if (uploadedCount > 0) {
+      if (failedCount > 0) {
+        // Partial success
+        toast({
+          title: "Partial Upload Success",
+          description: `Successfully uploaded ${uploadedCount} student ${uploadedCount === 1 ? 'submission' : 'submissions'} for ${examTitle}. ${failedCount} file${failedCount === 1 ? '' : 's'} failed.`,
+        });
+      } else {
+        // Full success
+        toast({
+          title: "Upload Successful!",
+          description: `Successfully uploaded ${uploadedCount} student ${uploadedCount === 1 ? 'submission' : 'submissions'} for ${examTitle}.`,
+        });
+      }
+    } else {
+      // All files failed
+      if (data.data?.errors && Array.isArray(data.data.errors)) {
+        const errorMessages = data.data.errors.map((e: any) => `${e.filename}: ${e.error}`).join('\n');
+        throw new Error(`All files failed to upload:\n${errorMessages}`);
+      }
+      throw new Error("All files failed to upload");
+    }
+
+    // Redirect after a short delay so user can see the success message
+         window.location.href = "/teacher/exams";
+  } catch (err) {
     setError(err instanceof Error ? err.message : "Error occurred");
+  } finally {
     setIsSubmitting(false);
   }
 };
@@ -110,16 +160,17 @@ export default function UploadSubmissionsPage() {
 
             <div className="grid gap-2">
               <Label>Upload Student Answer Sheets</Label>
-              <FileUpload maxFiles={50} value={files} onFilesChange={setFiles} />
+              <FileUpload 
+                maxFiles={FILE_UPLOAD.MAX_STUDENT_SUBMISSIONS} 
+                maxSize={FILE_UPLOAD.MAX_FILE_SIZE}
+                value={files} 
+                onFilesChange={setFiles} 
+              />
               <p className="text-xs text-muted-foreground">
                 Name files as: <code className="rounded bg-muted px-1 py-0.5">{"{"}student_user_id{"}"}.pdf</code>
               </p>
             </div>
 
-            <div className="flex items-center space-x-2">
-              <Checkbox id="auto-extract" checked={autoExtract} onCheckedChange={(c) => setAutoExtract(c as boolean)} />
-              <Label htmlFor="auto-extract">Auto-extract student IDs from file names</Label>
-            </div>
           </CardContent>
         </Card>
 
