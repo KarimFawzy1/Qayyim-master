@@ -41,3 +41,15 @@ export const gradeSubmissionSchema = z.object({
   matchPercentage: z.number().min(0).max(100).optional(),
 });
 
+export const createGrievanceSchema = z.object({
+  submissionId: z.string().min(1, 'Submission ID is required'),
+  grievanceType: z.enum(['SCORE_DISAGREEMENT', 'INCORRECT_FEEDBACK', 'MISSING_ANSWER', 'OTHER']),
+  questionNumber: z.number().int().positive().optional().nullable(),
+  description: z.string().min(50, 'Description must be at least 50 characters'),
+});
+
+export const updateGrievanceSchema = z.object({
+  action: z.enum(['resolve', 'dismiss', 'respond']),
+  instructorResponse: z.string().optional(),
+});
+

@@ -38,6 +38,7 @@ model Student {
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   submissions Submission[]
   courses     Course[]     @relation("CourseStudents")
+  grievances  Grievance[]
 
   @@map("students")
 }
@@ -57,7 +58,7 @@ model Course {
   students    Student[]    @relation("CourseStudents")
   exams       Exam[]       @relation("CourseExams")
 
-  @@unique([sectionType, academicYear, semester, sectionNumber])
+  @@unique([courseCode, sectionType, academicYear, semester, sectionNumber])
   @@map("courses")
 }
 
@@ -83,6 +84,7 @@ model Exam {
   instructorId String
   instructor   Instructor   @relation(fields: [instructorId], references: [id], onDelete: Cascade)
   submissions  Submission[]
+  grievances   Grievance[]
   courseId     String?
   course       Course?      @relation("CourseExams", fields: [courseId], references: [id], onDelete: SetNull)
 
@@ -105,9 +107,10 @@ model Submission {
 
   // Relations
   studentId String
-  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  student   Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
   examId    String
-  exam      Exam    @relation(fields: [examId], references: [id], onDelete: Cascade)
+  exam      Exam        @relation(fields: [examId], references: [id], onDelete: Cascade)
+  grievance Grievance?
 
   @@unique([studentId, examId])
   @@index([studentId])
@@ -115,6 +118,32 @@ model Submission {
   @@index([status])
   @@index([gradedAt])
   @@map("submissions")
+}
+
+model Grievance {
+  id                 String          @id @default(cuid())
+  grievanceType      GrievanceType
+  questionNumber     Int?
+  description        String          @db.Text
+  status             GrievanceStatus @default(PENDING)
+  instructorResponse String?         @db.Text
+  createdAt          DateTime        @default(now())
+  reviewedAt         DateTime?
+  resolvedAt         DateTime?
+
+  // Relations
+  studentId    String
+  student      Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  examId       String
+  exam         Exam       @relation(fields: [examId], references: [id], onDelete: Cascade)
+  submissionId String     @unique
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@index([examId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("grievances")
 }
 
 enum ExamType {
@@ -139,4 +168,18 @@ enum Semester {
   FALL
   SPRING
   SUMMER
+}
+
+enum GrievanceType {
+  SCORE_DISAGREEMENT
+  INCORRECT_FEEDBACK
+  MISSING_ANSWER
+  OTHER
+}
+
+enum GrievanceStatus {
+  PENDING
+  UNDER_REVIEW
+  RESOLVED
+  REJECTED
 }
