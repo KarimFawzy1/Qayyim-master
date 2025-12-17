@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,19 +15,57 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+interface Course {
+  id: string;
+  courseCode: string;
+  courseName: string;
+  sectionType: string;
+  sectionNumber: string;
+  academicYear: string;
+  semester: string;
+}
+
 export default function CreateExamPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loadingCourses, setLoadingCourses] = useState(true);
   
   // Form state
   const [title, setTitle] = useState("");
-  const [courseTopic, setCourseTopic] = useState("");
+  const [selectedCourseId, setSelectedCourseId] = useState<string>("");
   const [examType, setExamType] = useState<string>("");
   const [deadline, setDeadline] = useState("");
   const [rubricText, setRubricText] = useState("");
   const [modelAnswerFiles, setModelAnswerFiles] = useState<File[]>([]);
+
+  // Fetch courses on component mount
+  useEffect(() => {
+    const fetchCourses = async () => {
+      try {
+        setLoadingCourses(true);
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        
+        const res = await fetch("/api/v1/courses", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        
+        if (res.ok && data.data?.flatCourses) {
+          setCourses(data.data.flatCourses);
+        }
+      } catch (err) {
+        console.error('Error fetching courses:', err);
+      } finally {
+        setLoadingCourses(false);
+      }
+    };
+    
+    fetchCourses();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,17 +77,24 @@ export default function CreateExamPage() {
       if (!title.trim()) {
         throw new Error("Exam title is required");
       }
-      if (!courseTopic.trim()) {
-        throw new Error("Course/Topic is required");
+      if (!selectedCourseId) {
+        throw new Error("Please select a course");
       }
       if (!examType) {
         throw new Error("Exam type is required");
       }
 
+      // Get selected course for description
+      const selectedCourse = courses.find(c => c.id === selectedCourseId);
+      const courseTopic = selectedCourse 
+        ? `${selectedCourse.courseCode} - ${selectedCourse.courseName}`
+        : "";
+
       // Create FormData
       const formData = new FormData();
       formData.append("title", title);
-      formData.append("courseTopic", courseTopic);
+      formData.append("courseId", selectedCourseId);
+      formData.append("courseTopic", courseTopic); // Keep for backward compatibility/description
       formData.append("examType", examType);
       
       if (deadline) {
@@ -95,10 +140,8 @@ export default function CreateExamPage() {
       });
 
       // Redirect after a short delay so user can see the success message
-      setTimeout(() => {
         router.push("/teacher/exams");
         router.refresh();
-      }, 1500);
       
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
@@ -137,14 +180,35 @@ export default function CreateExamPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="course">Course/Topic</Label>
-              <Input 
-                id="course" 
-                placeholder="e.g., Algorithms, CS101" 
-                value={courseTopic}
-                onChange={(e) => setCourseTopic(e.target.value)}
+              <Label htmlFor="course">Course</Label>
+              <Select 
+                value={selectedCourseId} 
+                onValueChange={setSelectedCourseId}
                 required
-              />
+                disabled={loadingCourses}
+              >
+                <SelectTrigger id="course">
+                  <SelectValue placeholder={loadingCourses ? "Loading courses..." : "Select a course"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {courses.length > 0 ? (
+                    courses.map((course) => (
+                      <SelectItem key={course.id} value={course.id}>
+                        {course.courseCode} - {course.courseName} ({course.sectionType} {course.sectionNumber})
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-courses" disabled>
+                      No courses available
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+              {selectedCourseId && (
+                <p className="text-xs text-muted-foreground">
+                  Selected: {courses.find(c => c.id === selectedCourseId)?.courseCode} - {courses.find(c => c.id === selectedCourseId)?.courseName}
+                </p>
+              )}
             </div>
             <div className="grid gap-2">
               <Label htmlFor="exam-type">Exam Type</Label>

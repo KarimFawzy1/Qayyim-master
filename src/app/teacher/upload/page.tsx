@@ -40,7 +40,11 @@ export default function UploadSubmissionsPage() {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = await res.json();
-        if (res.ok) setExams(data.data || []);
+        if (res.ok) {
+          // Handle new response structure: { exams: [...], availableCourses: [...] }
+          const examsData = data.data?.exams || data.data || [];
+          setExams(Array.isArray(examsData) ? examsData : []);
+        }
       } catch (err) {
         console.error(err);
       }

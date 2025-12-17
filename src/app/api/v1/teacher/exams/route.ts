@@ -12,27 +12,88 @@ export async function GET(request: NextRequest) {
     const authUser = requireRole(request, 'TEACHER');
     
     const instructor = await prisma.instructor.findUnique({
-    where: { userId: authUser.userId }  // Find instructor by User ID
+      where: { userId: authUser.userId }  // Find instructor by User ID
     });
   
-     if (!instructor) {
+    if (!instructor) {
       throw new Error('Instructor profile not found');
     }
     
+    // Get query parameters for filtering
+    const { searchParams } = new URL(request.url);
+    const courseCode = searchParams.get('courseCode');
+    
+    // Build where clause
+    const where: any = { instructorId: instructor.id };
+    if (courseCode) {
+      where.course = {
+        courseCode: courseCode
+      };
+    }
+    
     const exams = await prisma.exam.findMany({
-      // ⚠️ FIX: Changed teacherId to instructorId to match schema
-      where: { instructorId: instructor.id }, 
+      where,
       orderBy: { createdAt: 'desc' },
       include: {
+        course: {
+          select: {
+            id: true,
+            courseCode: true,
+            courseName: true,
+          },
+        },
         _count: {
           select: {
             submissions: true,
           },
         },
+        submissions: {
+          select: {
+            status: true,
+          },
+        },
       },
     });
     
-    return successResponse(exams, 'Exams retrieved successfully');
+    // Get unique course codes only from exams (courses that actually have exams)
+    const coursesFromExams = exams
+      .filter(exam => exam.course)
+      .map(exam => ({
+        courseCode: exam.course!.courseCode,
+        courseName: exam.course!.courseName,
+      }));
+    
+    // Deduplicate by courseCode - only show courses that have exams
+    const uniqueCourses = Array.from(
+      new Map(coursesFromExams.map(c => [c.courseCode, c])).values()
+    );
+    
+    // Transform exams to include graded and total submission counts
+    const examsWithCounts = exams.map(exam => {
+      const totalSubmissions = exam._count.submissions;
+      const gradedSubmissions = exam.submissions.filter(
+        sub => sub.status === 'GRADED'
+      ).length;
+      
+      return {
+        id: exam.id,
+        title: exam.title,
+        description: exam.description,
+        type: exam.type,
+        deadline: exam.deadline,
+        createdAt: exam.createdAt,
+        updatedAt: exam.updatedAt,
+        courseCode: exam.course?.courseCode || null,
+        courseName: exam.course?.courseName || null,
+        totalSubmissions,
+        gradedSubmissions,
+      };
+    });
+    
+    return successResponse({
+      exams: examsWithCounts,
+      availableCourses: uniqueCourses,
+    }, 'Exams retrieved successfully');
   } catch (error) {
     return handleApiError(error);
   }
@@ -55,10 +116,14 @@ export async function POST(request: NextRequest) {
       throw new Error('Instructor profile not found');
     }
     
+    // Extract fields from form
+    const courseId = formData.get('courseId') as string | null;
+    const courseTopic = formData.get('courseTopic') as string | null;
+    
     // Extract only the fields that exist in your form
     const body = {
       title: formData.get('title') as string,
-      description: formData.get('courseTopic') as string, 
+      description: courseTopic || null, // Use courseTopic as description if provided
       type: formData.get('examType') as string,
       deadline: formData.get('deadline') as string | null,
       rubric: formData.get('rubricText') as string | null,
@@ -66,6 +131,16 @@ export async function POST(request: NextRequest) {
     
     // Validate - adjust your createExamSchema to match these fields only
     const validatedData = createExamSchema.parse(body);
+    
+    // Validate courseId if provided
+    if (courseId) {
+      const course = await prisma.course.findUnique({
+        where: { id: courseId },
+      });
+      if (!course) {
+        throw new Error('Invalid course selected');
+      }
+    }
     
     // Create exam (only with fields from form)
     const exam = await prisma.exam.create({
@@ -75,7 +150,8 @@ export async function POST(request: NextRequest) {
         type: validatedData.type,
         deadline: validatedData.deadline ? new Date(validatedData.deadline) : null,
         rubric: validatedData.rubric,
-        instructorId: instructor.id, 
+        instructorId: instructor.id,
+        courseId: courseId || null, // Link exam to course if provided
       },
     });
     
