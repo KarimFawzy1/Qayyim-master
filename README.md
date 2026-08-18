@@ -12,51 +12,19 @@
 2. [Tech Stack](#tech-stack)
 3. [Phase-by-Phase Build Order](#phase-by-phase-build-order)
 4. [Application Services](#application-services)
-5. [Environment Variables](#environment-variables)
-6. [Deployment Runbook](#deployment-runbook)
-7. [Production Incidents & Lessons Learned](#production-incidents--lessons-learned)
+5. [Production Incidents & Lessons Learned](#production-incidents--lessons-learned)
 
 ---
 
 ## Architecture Overview
 
-```
-                        ┌─────────────────────────────────┐
-                        │   Route 53 (qayyim.tech DNS)    │
-                        └────────────────┬────────────────┘
-                                         │
-                        ┌────────────────▼────────────────┐
-                        │   CloudFront + WAF               │
-                        │   CDN, DDoS, edge caching        │
-                        └────────────────┬────────────────┘
-                                         │
-┌────────────────────────────────────────▼──────────────────────────────────┐
-│  qayyim-prod-vpc  (10.0.0.0/16)                                           │
-│                                                                           │
-│  ┌──────────────────────────────────────────────────────────────────────┐ │
-│  │  Public Subnets                                                      │ │
-│  │   ALB (HTTPS 443, HTTP→HTTPS redirect)   NAT Gateway                │ │
-│  └─────────────────────────┬────────────────────────────────────────────┘ │
-│                             │                                             │
-│  ┌──────────────────────────▼───────────────────────────────────────────┐ │
-│  │  Private Subnets — App Tier                                          │ │
-│  │   Auto Scaling Group (min 1 / desired 1 / max 2)                    │ │
-│  │   EC2 t3.micro — Docker Compose                                     │ │
-│  │   ├── nextjs_app        :3000                                       │ │
-│  │   ├── ai_grading        :5000                                       │ │
-│  │   ├── ai_upload         :5003                                       │ │
-│  │   └── pdf_worker        (BullMQ queue consumer)                     │ │
-│  └──────────────────────────────────────────────────────────────────────┘ │
-│                                                                           │
-│  ┌──────────────────────────────────────────────────────────────────────┐ │
-│  │  Private Subnets — Data Tier                                         │ │
-│  │   RDS MySQL 8.0 (db.t3.micro)    ElastiCache Redis 7 (Serverless)   │ │
-│  └──────────────────────────────────────────────────────────────────────┘ │
-└───────────────────────────────────────────────────────────────────────────┘
+AWS Infrastructure
 
-External:  ECR · S3 · Secrets Manager · ACM · Route 53
-```
+![Qayyim AWS Production Architecture](screenshots/architecture-image.gif)
 
+Application
+
+![Qayyim AWS Production Architecture](screenshots/architecture.png)
 ---
 
 ## Tech Stack
@@ -67,7 +35,7 @@ External:  ECR · S3 · Secrets Manager · ACM · Route 53
 | CDN / Edge | CloudFront + WAF | Static asset caching, managed rule sets, rate limiting |
 | SSL | ACM | Two certs: eu-central-1 (ALB) + us-east-1 (CloudFront) |
 | Load Balancer | ALB | HTTP→HTTPS redirect, health checks on `/api/health` |
-| Compute | EC2 t3.micro + ASG | Amazon Linux 2023, Docker Compose, IMDSv2 enforced |
+| Compute | EC2 t.2small + ASG | Amazon Linux 2023, Docker Compose, IMDSv2 enforced |
 | Container Registry | ECR | 4 repos: app, ai-grading, ai-upload, worker |
 | Database | RDS MySQL 8.0 | Prisma ORM, automated backups, private subnet |
 | Cache / Queue | ElastiCache Redis 7 Serverless | BullMQ job queues, TLS enforced |
@@ -91,6 +59,64 @@ External:  ECR · S3 · Secrets Manager · ACM · Route 53
 - **Prisma ORM** - Type-safe database access
 - **Zod 3.24.2** - Schema validation
 - **JWT + bcrypt** - Authentication & authorization
+
+---
+
+## Performance & Infrastructure Stress Testing
+
+To evaluate infrastructure elasticity, auto-healing, and backend processing capabilities under heavy load, the platform was subjected to an automated **k6** stress test. The test simulated 100 concurrent Virtual Users (VUs) executing real-world authenticated workflows, including JWT authentication, dashboard data fetching, exam creation, and multipart PDF submission uploads.
+
+### Test Metrics & Summary
+
+| Metric | Pre-Test Baseline | Peak / Test Outcome | Notes |
+|---|---|---|---|
+| **Active Users (VUs)** | 0 | **100 Concurrent VUs** | Ramped over an 8-minute duration |
+| **Total HTTP Requests** | 0 | **7,444 Requests** | ~15.33 requests/sec average throughput |
+| **Request Success Rate** | 100% | **99.79% Success** | 7,428 passed / 16 failed |
+| **ASG Instance Count** | 1 Node (`InService`) | **3 Nodes (`InService`)** | Scaled automatically on >70% CPU alarm |
+| **Database Payload** | 2,238 Exams | **2,715 Exams (+477)** | Verified real-time persistence in RDS/S3 |
+| **Network Payload** | 0 MB | **347 MB Received / 4.2 MB Sent** | High inbound due to concurrent PDF uploads |
+| **Response Latency** | ~120ms | **p(90)=5.87s / p(95)=9.88s** | Identified backend processing bottleneck under load |
+
+---
+## Performance & Infrastructure Stress Testing
+
+Validated infrastructure elasticity and backend resilience using **k6** to simulate **100 concurrent users** (VUs) executing authenticated workflows and dynamic PDF uploads over an 8-minute window. The test simulated 100 concurrent Virtual Users (VUs) executing real-world authenticated workflows, including JWT authentication, dashboard data fetching, exam creation, and multipart PDF submission uploads.
+
+### Test Metrics & Summary
+
+| Metric | Pre-Test Baseline | Peak / Test Outcome | Notes |
+|---|---|---|---|
+| **Active Users (VUs)** | 0 | **100 Concurrent VUs** | Ramped over an 8-minute duration |
+| **Total HTTP Requests** | 0 | **7,444 Requests** | ~15.33 requests/sec average throughput |
+| **Request Success Rate** | 100% | **99.79% Success** | 7,428 passed / 16 failed |
+| **ASG Instance Count** | 1 Node (`InService`) | **3 Nodes (`InService`)** | Scaled automatically on >70% CPU alarm |
+| **Database Payload** | ~2,200 Exams & PDFs | **2,715 Exams (+477)** | Verified real-time persistence in RDS/S3 |
+| **Network Payload** | 0 MB | **347 MB Received / 4.2 MB Sent** | High inbound due to concurrent PDF uploads |
+| **Response Latency** | ~120ms | **p(90)=5.87s / p(95)=9.88s** | Identified backend processing bottleneck under load |
+
+---
+
+### Load Test Lifecycle & Results
+
+#### 1. Baseline State & Test Ramping
+Initial state with **~2,200 exams/PDFs** in RDS MySQL and S3, served by 1 active EC2 instance.
+
+![Baseline State & Test Initialization](screenshots/01_baseline_start.png)
+
+#### 2. CloudWatch Telemetry & ASG Scale-Out
+At peak 100 VU load, ALB traffic hit **169 RPS** and CPU breached 70%, triggering ASG step-scaling from **1 to 3 EC2 instances**.
+
+![CloudWatch Stress Dashboards](screenshots/02_cloudwatch_scaling.png)
+
+#### 3. Containers created successfully on new instances
+Newly created instance successfully created 4 containers that are actively running the app
+![CloudWatch Stress Dashboards](screenshots/03_containers_running.png)
+
+#### 4. Real-Time Data Persistence
+Post-test dashboard verified exam count reached **2,715**—successfully processing **477 new exams and PDF uploads** to RDS/S3 with zero data loss.
+
+![Post-Test Application Dashboard Verification](screenshots/04_post_test_dashboard.png)
 
 ---
 
@@ -149,47 +175,7 @@ With Route 53, validation is one click ("Create record in Route 53" button).
 
 **Launch Template** — AMI: Amazon Linux 2023 (SSM agent + AWS CLI pre-installed). Set IMDSv2 hop limit to `2` — required for Docker containers to reach instance metadata for IAM role credentials.
 
-User data script runs on every fresh instance boot:
-
-```bash
-#!/bin/bash
-exec > /var/log/user-data.log 2>&1
-echo "=== Starting setup ===" && date
-
-yum update -y
-yum install -y docker jq aws-cli
-systemctl enable docker && systemctl start docker
-usermod -a -G docker ec2-user
-
-curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" \
-  -o /usr/local/bin/docker-compose && chmod +x /usr/local/bin/docker-compose
-
-mkdir -p /home/ec2-user/app && cd /home/ec2-user/app
-
-aws secretsmanager get-secret-value \
-  --secret-id qayyim/prod/app --region eu-central-1 \
-  --query SecretString --output text \
-  | jq -r 'to_entries|map("\(.key)=\(.value)")|.[]' \
-  > /home/ec2-user/app/.env
-
-cat >> /home/ec2-user/app/.env <<'EOF'
-NODE_ENV=production
-AWS_REGION=eu-central-1
-AWS_S3_BUCKET_NAME=ai-exam-grader-pdfs
-OCR_SERVICE_URL=http://localhost:5003
-AI_GRADING_SERVICE_URL=http://localhost:5000
-EOF
-
-aws s3 cp s3://ai-exam-grader-pdfs/config/docker-compose.prod.yml \
-  /home/ec2-user/app/docker-compose.yml
-
-aws ecr get-login-password --region eu-central-1 | \
-  docker login --username AWS --password-stdin \
-  491991045754.dkr.ecr.eu-central-1.amazonaws.com
-
-docker-compose pull && docker-compose up -d
-echo "=== Setup complete ===" && date
-```
+User data script runs on every fresh instance boot - file located here: > 🛠️ **User Data Script:** The EC2 boot script that installs Docker, pulls secrets, and spins up the containers is located here: [`user-data.sh`](./Terraform-Qayyim\user_data.sh).
 
 **Target Group** — type: Instances, port 3000, health check path `/api/health`, grace period 300s.
 
@@ -209,11 +195,10 @@ echo "=== Setup complete ===" && date
 
 ---
 
-### Phase 7 — CI/CD & IaC
+### Phase 7 — IaC
 
-**GitHub Actions** — build → Trivy scan → push to ECR with SHA tag → SSM Run Command to pull and restart containers on EC2.
 
-**Terraform (in progress)** — modular structure (`modules/vpc`, `modules/rds`, etc.) with separate `envs/prod` and `envs/dev` var files. S3 + DynamoDB backend for state locking.
+**Terraform** — modular structure (`modules/vpc`, `modules/rds`, etc.) with separate `envs/prod` and `envs/dev` var files. S3 + DynamoDB backend for state locking.
 
 ---
 
@@ -230,150 +215,136 @@ All four containers share a Docker bridge network on the EC2. Next.js calls Flas
 
 ---
 
-## Environment Variables
-
-**Secrets Manager (`qayyim/prod/app`):**
-```
-DATABASE_URL, REDIS_URL, JWT_SECRET,
-OPENROUTER_API_KEY, GOOGLE_API_KEY, GEMINI_API_KEY, HF_TOKEN, RESEND_API
-```
-
-**Appended by user data (non-sensitive):**
-```
-NODE_ENV, AWS_REGION, AWS_S3_BUCKET_NAME, OCR_SERVICE_URL, AI_GRADING_SERVICE_URL
-```
-
-**Not in `.env` at all:** `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` — the EC2 IAM role handles S3, ECR, and Secrets Manager authentication automatically via instance metadata. Never use hardcoded keys on EC2.
-
----
-
-## Deployment Runbook
-
-**Deploy a new image:**
-```bash
-docker build -t qayyim-app . && \
-docker tag qayyim-app:latest 491991045754.dkr.ecr.eu-central-1.amazonaws.com/qayyim-app:latest && \
-docker push 491991045754.dkr.ecr.eu-central-1.amazonaws.com/qayyim-app:latest
-
-# On EC2 via SSM:
-cd /home/ec2-user/app && docker-compose pull && docker-compose up -d
-```
-
-**Import SQL dump to RDS:**
-```bash
-# Copy dump to bastion, then from bastion:
-sudo yum install -y mysql
-mysql -h <rds-endpoint> -u admin -p'PASSWORD' qayyim < dump.sql
-```
-
-**Check container logs:**
-```bash
-docker logs nextjs_app_qayim --tail 100 -f
-sudo cat /var/log/user-data.log   # debug boot script
-```
-
----
-
 ## Production Incidents & Lessons Learned
 
 ### 1. ASG Infinite Launch-Terminate Loop
 
-**Problem:** ASG kept launching instances, failing health checks, and terminating in a loop. Burned through free tier hours rapidly.
+**Problem:** ASG kept launching instances, failing health checks, and terminating in a loop. This rapidly consumed EC2 hours.
 
-**Root cause:** NAT Gateway didn't exist yet. Private subnet EC2s had no outbound internet — couldn't reach ECR to pull images or Secrets Manager to fetch credentials. App never started, port 3000 never opened, ALB marked unhealthy, ASG terminated and retried.
+**Root cause:** Private subnet EC2 instances had no outbound internet because the NAT Gateway had not been created. They could not pull images from ECR, retrieve secrets from Secrets Manager, contact SSM, or finish startup. Port `3000` never opened, the ALB marked targets unhealthy, and ASG continuously replaced them.
 
-**Solution:** Set ASG desired=0 to stop the loop immediately. Created NAT Gateway, updated private route table, then set desired=1.
+**Solution:** Set ASG desired capacity to `0` to stop the loop. Created the NAT Gateway, added the private-subnet default route, then restored desired capacity to `1`.
 
-**Lesson:** NAT Gateway is a hard dependency for everything in private subnets — ECR, Secrets Manager, SSM Agent, package installs. Validate outbound connectivity before launching anything else.
-
----
-
-### 2. The 3000-Second Split-Brain
-
-**Problem:** During an instance refresh, the ALB routed traffic to both the old broken instance and the new fixed one simultaneously. Every browser refresh was a coin flip.
-
-**Root cause:** ASG Health Check Grace Period was set to 3000 seconds. The ALB marked the new instance healthy immediately, but the ASG was forced to keep the old instance alive for 50 minutes before terminating it. Both registered in the target group, both serving traffic.
-
-**Solution:** Reduced grace period to 300 seconds. Manually terminated the old instance to force a clean cutover.
-
-**Lesson:** Grace period is not "how long before marking unhealthy" — it's "how long the ASG ignores health checks entirely." Understand the difference before setting it.
+**Lesson:** NAT Gateway or equivalent VPC endpoints are a hard dependency for private instances using ECR, Secrets Manager, SSM, package installs, and external APIs. Validate outbound connectivity before launching the ASG.
 
 ---
 
-### 3. ElastiCache Created in Wrong VPC
+### 2. ASG Replacement Loop After Reducing Health Check Grace Period
 
-**Problem:** Redis ended up in the default VPC. App servers couldn't reach it — connection timeouts on every Redis operation.
+**Problem:** Even with desired capacity set to `1`, ASG temporarily created multiple instances and repeatedly replaced instances during startup.
 
-**Root cause:** ElastiCache Serverless buries the VPC selector. AWS silently defaulted to the default VPC.
+**Root cause:** Health check grace period was reduced from `300` to `120` seconds. New instances needed to boot, run user data, pull several Docker images, start Next.js, AI, upload, and worker containers, then pass ALB health checks. ASG started trusting ELB health results before startup completed, marked targets unhealthy, and launched replacements. Launch-before-terminate behavior caused temporary extra instances.
 
-**Solution:** Deleted and recreated, explicitly selecting the correct VPC in the Connectivity section. VPC cannot be changed after creation.
+**Solution:** Increased ASG health check grace period back to `300–360` seconds. This lets the full container stack start before ASG acts on failed EC2/ELB health checks.
 
-**Lesson:** Always verify VPC, subnet, and security group on every resource before clicking Create.
-
----
-
-### 4. BullMQ CROSSSLOT Error on ElastiCache Serverless
-
-**Problem:** Every PDF upload failed with `ERR Script attempted to access keys that do not hash to the same slot`. No jobs were processed.
-
-**Root cause:** ElastiCache Serverless runs cluster mode internally. BullMQ's Lua scripts atomically operate on multiple keys. In cluster mode, keys must hash to the same slot — without hash tags, `bull:pdf-processing:wait` and `bull:pdf-processing:active` land on different slots.
-
-**Solution:** Added Redis hash tags to the queue name everywhere: `'{pdf-processing}'` instead of `'pdf-processing'`. All `bull:{pdf-processing}:*` keys now hash to the same slot. Code change only, no infra change.
-
-**Lesson:** ElastiCache Serverless is not a plain Redis instance. Any library using multi-key Lua scripts requires hash tags or will fail in cluster mode.
+**Lesson:** Health check grace period does not delay ALB checks; ALB checks continue at its configured interval. It only controls how long ASG ignores unhealthy results for a new instance. Set it based on measured end-to-end startup time.
 
 ---
 
-### 5. S3 `Resolved credential object is not valid` — 3-Part Fix
+### 3. Scaling + k6 + Step Scaling + Grace Period Behavior
 
-**Problem:** App running, UI loading, but every PDF upload threw a credential error from the AWS SDK S3 client.
+**Problem:** During a k6 test (~100 users), Target Tracking did not scale fast enough. At the same time, scaling policies behaved inconsistently and needed tuning. Additionally, ASG behavior during startup was affected by grace period timing.
 
-**Root cause (Part 1 — IMDSv2 hop limit):** Docker containers are one network hop from the EC2 host. IMDSv2 default hop limit is 1 — the metadata token request died before reaching the EC2. SDK couldn't retrieve IAM role credentials.
+**Root cause:** Target Tracking is not instant—it depends on CloudWatch CPU datapoints, evaluation delay, EC2 launch time, Docker image pulls, container startup, and ALB health checks. Step Scaling also had misconfigured interval bounds, causing delayed or uneven scale-out. Grace period configuration also affects when ASG reacts to health evaluation during startup.
 
-**Solution:** Updated Launch Template metadata hop limit from 1 to 2.
+**Solution:** Extended k6 test to ~11 minutes to cover full scaling lifecycle. Kept Target Tracking at 60% CPU for normal load and added Step Scaling for spikes:
 
-**Root cause (Part 2 — hardcoded credentials block):** `src/lib/s3.ts` had an explicit `credentials: { accessKeyId, secretAccessKey }` block in the S3Client constructor. This overrides the SDK's automatic credential chain. With no keys in `.env`, the SDK received `undefined` and threw "not valid" instead of falling through to the IAM role.
+- Alarm: CPU > 50% for 1 x 60-second period  
+- Action: Add 2 instances  
+- MetricIntervalLowerBound: 0  
 
-**Solution:** Removed the credentials block entirely. SDK now auto-detects: env vars → `~/.aws` → EC2 instance metadata.
-
-**Root cause (Part 3 — validation function):** A startup validation function required `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` to be present, throwing before the S3Client was even created.
-
-**Solution:** Removed those two keys from the required array — they're not needed when using IAM roles.
-
-**Lesson:** On EC2, never hardcode AWS credentials. The SDK credential chain handles everything automatically if you get out of its way.
+**Lesson:** Load tests must cover full scaling lifecycle, not just generate load. Use Target Tracking for steady state and Step Scaling for fast spike response, and always validate scaling policies end-to-end. Grace period must also be considered as part of scaling behavior.
 
 ---
 
-### 6. Auto-Rotated RDS Password Breaking DATABASE_URL
+### 4. AWS WAF Blocking PDF Uploads
 
-**Problem:** After Secrets Manager auto-rotated the RDS password, newly launched EC2 instances from the ASG couldn't connect to the database. Existing instances were fine; only fresh boots broke.
+**Problem:** PDF uploads through CloudFront returned `403 Forbidden` with `x-cache: Error from cloudfront`. Requests were blocked before reaching the backend.
 
-**Root cause:** The user data script assembled `DATABASE_URL` from individual parts at boot time. The auto-rotated password contained special characters (`[`, `]`, `:`, `@`) that break URL parsing when unescaped. `jq` doesn't URL-encode values during extraction.
+**Root cause:** AWS WAF was attached to CloudFront and included managed rule groups such as `AWSManagedRulesCommonRuleSet`, `AWSManagedRulesKnownBadInputsRuleSet`, and `AWSManagedRulesAmazonIpReputationList`. Multipart/form-data uploads or PDF contents triggered a managed-rule false positive.
 
-**Solution:** Stored `DATABASE_URL` as a single complete pre-built connection string in Secrets Manager with the password already URL-encoded. The script writes it directly — no assembly at runtime.
+**Temporary solution:** Changed the managed rule groups from `Block` to `Count` mode. Uploads reached the backend while WAF continued logging which rules would have blocked them.
 
-**Lesson:** Never assemble connection strings at boot from parts. Store the full URL as one secret. Also: test a full ASG instance launch after each password rotation cycle — existing connections won't reveal the issue.
+**Production solution:** Create a high-priority rule named `AllowUploadEndpointBypass` above AWS Managed Rule Groups. Allow only `POST` requests to the exact upload endpoint, such as `/api/v1/teacher/student-submission`. This bypasses managed-rule inspection only for valid upload traffic while managed rules remain in `Block` mode for all other routes.
 
----
-
-### 7. RDS Proxy Created by Accident
-
-**Problem:** RDS Proxy began provisioning during DB creation — ~$11/month with no benefit at this scale.
-
-**Root cause:** Accidentally checked the RDS Proxy checkbox in Additional Configuration.
-
-**Solution:** Deleted it immediately from RDS → Proxies before it finished provisioning.
-
-**Lesson:** Read every section of the creation form before submitting. AWS has many opt-in paid features scattered throughout.
+**Lesson:** Test file uploads through the full CloudFront + WAF path early. Use WAF sampled requests to identify the exact managed sub-rule before creating a narrow exception.
 
 ---
 
-### 8. SSM Session Manager Offline Despite Correct IAM Role
+### 5. The 3000-Second Split-Brain
 
-**Problem:** SSM Agent showed offline on all private subnet EC2s despite `AmazonSSMManagedInstanceCore` being correctly attached.
+**Problem:** During an instance refresh, the ALB routed traffic to both an old broken instance and a new fixed instance. Browser refreshes produced inconsistent results.
 
-**Root cause:** SSM Agent needs outbound HTTPS to reach AWS SSM endpoints. Private subnet instances route outbound through NAT — which didn't exist yet.
+**Root cause:** ASG health check grace period was set to `3000` seconds. The ALB marked the new instance healthy, but ASG ignored health results for 50 minutes and retained the old broken instance. Both remained registered and served traffic.
 
-**Solution:** Creating the NAT Gateway resolved it automatically within minutes.
+**Solution:** Reduced grace period to `300` seconds and manually terminated the old instance to force a clean cutover.
 
-**Lesson:** SSM, ECR, Secrets Manager — all require the same outbound path through NAT. It's not optional for private subnets.
+**Lesson:** Grace period means “how long ASG ignores health results,” not “how long before ALB begins checking.” Excessively large values can keep broken instances serving traffic.
+
+---
+
+### 6. ElastiCache Created in the Wrong VPC
+
+**Problem:** Redis was created in the default VPC, while application servers ran in the production VPC. Every Redis operation timed out.
+
+**Root cause:** ElastiCache Serverless defaults were used and the VPC selector was missed during creation.
+
+**Solution:** Deleted and recreated Redis while explicitly selecting the correct VPC, subnets, and security group. VPC placement cannot be changed after creation.
+
+**Lesson:** Verify VPC, subnet, and security group for every managed AWS service before creation.
+
+---
+
+### 7. S3 `Resolved credential object is not valid` — Three-Part Fix
+
+**Problem:** The application UI loaded, but every PDF upload failed with an AWS SDK S3 credential error.
+
+**Root causes — IMDSv2 hop limit:** Docker containers are one network hop away from the EC2 host. IMDSv2 hop limit was `1`, so containers could not retrieve EC2 role credentials.
+
+**Solution:** Updated the Launch Template metadata hop limit from `1` to `2`.
+
+**Root causes — hardcoded credentials block:** The S3 client explicitly set `accessKeyId` and `secretAccessKey`. This overrode the AWS SDK default credential chain and passed undefined values when no `.env` credentials existed.
+
+**Solution:** Removed the explicit credentials block and allowed the SDK to use its default provider chain.
+
+**Root causes — startup validation:** Application validation required `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, even though EC2 IAM roles do not require them.
+
+**Solution:** Removed those keys from required environment variables.
+
+**Lesson:** On EC2, use IAM roles and the AWS SDK default credential chain. Do not hardcode credentials or require environment keys that are unnecessary with instance roles.
+
+---
+
+### 8. Auto-Rotated RDS Password Breaking `DATABASE_URL`
+
+**Problem:** After Secrets Manager rotated the RDS password, newly launched ASG instances could not connect to the database. Existing instances continued working.
+
+**Root cause:** User data assembled `DATABASE_URL` from separate secret values. The rotated password contained reserved URL characters such as `[`, `]`, `:`, and `@`, which broke connection-string parsing because `jq` does not URL-encode values.
+
+**Solution:** Stored `DATABASE_URL` as one complete URL-encoded connection string in Secrets Manager. User data now writes it directly without assembling values at boot.
+
+**Lesson:** Store complete connection strings as a single secret. Test a fresh ASG launch after password rotation because existing database connections can hide boot-time failures.
+
+---
+
+### 9. RDS Proxy Created by Accident
+
+**Problem:** RDS Proxy began provisioning during database creation, adding approximately `$11/month` with no benefit for the project scale.
+
+**Root cause:** The RDS Proxy option was accidentally enabled in Additional Configuration.
+
+**Solution:** Deleted the proxy immediately from RDS → Proxies.
+
+**Lesson:** Review all creation-form sections before submitting. AWS consoles include optional paid features throughout the workflow.
+
+---
+
+### 10. SSM Session Manager Offline Despite Correct IAM Role
+
+**Problem:** SSM Agent appeared offline on private-subnet EC2 instances even though `AmazonSSMManagedInstanceCore` was attached.
+
+**Root cause:** SSM Agent requires outbound HTTPS access to AWS Systems Manager endpoints. Private instances had no NAT Gateway yet.
+
+**Solution:** Creating the NAT Gateway restored SSM connectivity within minutes.
+
+**Lesson:** SSM, ECR, Secrets Manager, package managers, and many AWS APIs require outbound access from private instances through NAT Gateway or VPC endpoints.
