@@ -53,3 +53,15 @@ next-env.d.ts
 # Ignore CLI configuration files
 .terraformrc
 terraform.rc
+
+# not deployed yet
+k8s/
+argocd/
+K8S-MIGRATION-GUIDE.md
+
+# misc tool config (if not meant to be shared)
+.mise.toml
+
+deploy.ps1
+deploy-ecr.bat
+Terraform-Qayyim/setup.ps1
