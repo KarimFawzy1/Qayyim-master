@@ -1,6 +1,6 @@
 services:
   ai_grading:
-    image: 491991045754.dkr.ecr.eu-central-1.amazonaws.com/qayyim-ai:latest
+    image: <AWS_ACCOUNT_ID>.dkr.ecr.eu-central-1.amazonaws.com/qayyim-ai:latest
     container_name: ai_grading_container
     restart: always
     ports:
@@ -8,15 +8,15 @@ services:
     environment:
       - API_HOST=0.0.0.0
       - API_PORT=5000
-    env_file:           
-      - .env           
-    volumes:           
+    env_file:
+      - .env
+    volumes:
       - chroma_data:/app/chroma_db
     networks:
       - qayyim_net
 
   ai_upload:
-    image: 491991045754.dkr.ecr.eu-central-1.amazonaws.com/qayyim-ai-upload:latest
+    image: <AWS_ACCOUNT_ID>.dkr.ecr.eu-central-1.amazonaws.com/qayyim-ai-upload:latest
     container_name: ai_upload_container
     restart: always
     ports:
@@ -24,19 +24,19 @@ services:
     environment:
       - API_HOST=0.0.0.0
       - API_PORT=5003
-    env_file:          
-      - .env          
+    env_file:
+      - .env
     networks:
       - qayyim_net
 
   app:
-    image: 491991045754.dkr.ecr.eu-central-1.amazonaws.com/qayyim-app:latest
+    image: <AWS_ACCOUNT_ID>.dkr.ecr.eu-central-1.amazonaws.com/qayyim-app:latest
     container_name: nextjs_app_qayim
     restart: always
     ports:
       - "3000:3000"
-    env_file:          
-      - .env          
+    env_file:
+      - .env
     depends_on:
       ai_grading:
         condition: service_started
@@ -46,11 +46,11 @@ services:
       - qayyim_net
 
   worker:
-    image: 491991045754.dkr.ecr.eu-central-1.amazonaws.com/qayyim-worker:latest
+    image: <AWS_ACCOUNT_ID>.dkr.ecr.eu-central-1.amazonaws.com/qayyim-worker:latest
     container_name: pdf_worker_qayim
     restart: always
-    env_file:          
-      - .env          
+    env_file:
+      - .env
     depends_on:
       ai_grading:
         condition: service_started
@@ -59,8 +59,8 @@ services:
     networks:
       - qayyim_net
 
-volumes:              
-  chroma_data:   
+volumes:
+  chroma_data:
 
 networks:
   qayyim_net:
